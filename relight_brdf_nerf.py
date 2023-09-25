@@ -20,7 +20,7 @@ tf.compat.v1.enable_eager_execution()
 def img2mse(x, y): return tf.reduce_mean(tf.square(x - y))
 
 
-def mse2psnr(x): return -10. * tf.log(x) / tf.log(10.)
+def mse2psnr(x): return -10. * tf.math.log(x) / tf.math.log(10.)
 
 
 def to8b(x): return (255 * np.clip(x, 0, 1)).astype(np.uint8)
@@ -557,8 +557,12 @@ def render_rays(ray_batch,
         ret['binary_loss'] = binary_loss
         ret['z_std'] = tf.math.reduce_std(z_samples, -1)  # [N_rays]
 
+    # for k in ret:
+    #     tf.debugging.check_numerics(ret[k], 'output {}'.format(k))
+
     for k in ret:
-        tf.debugging.check_numerics(ret[k], 'output {}'.format(k))
+        tf.debugging.assert_all_finite(ret[k], 'output {}'.format(k))
+
 
     return ret
 
@@ -1146,7 +1150,7 @@ def train():
     print('VAL views are', i_val)
 
     # Summary writers
-    writer = tf.contrib.summary.create_file_writer(
+    writer = tf.summary.create_file_writer(
         os.path.join(basedir, 'summaries', expname))
     writer.set_as_default()
 
@@ -1273,14 +1277,15 @@ def train():
             # print(expname, ' iter: ', i, ' psnr: ', psnr.numpy(), ' l_tot: ', loss.numpy(), ' l_imgloss: ', img_loss.numpy(), ' l_imgloss0: ', img_loss0.numpy(), ' w_silden_density: ', w_alpha_loss.numpy(), ' w_binary_density: ', w_binary_loss.numpy()) # uncomment if using Silhouette Density Loss
             print(expname, ' iter: ', i, ' psnr: ', psnr.numpy(), ' l_tot: ', loss.numpy(), ' l_imgloss: ', img_loss.numpy(), ' l_imgloss0: ', img_loss0.numpy(), ' w_binary_density: ', w_binary_loss.numpy()) # removed sil dens loss from printing
             print('iter time {:.05f}'.format(dt))
-            with tf.contrib.summary.record_summaries_every_n_global_steps(args.i_print):
-                tf.contrib.summary.scalar('loss', loss)
-                tf.contrib.summary.scalar('psnr', psnr)
-                # tf.contrib.summary.scalar('w_silden_loss', w_alpha_loss) # uncomment if using Silhouette Density Loss
-                tf.contrib.summary.scalar('w_binary_loss', w_binary_loss)
-                tf.contrib.summary.histogram('tran', trans)
+            #with tf.summary.record_summaries_every_n_global_steps(args.i_print):
+            with tf.summary.record_if(lambda: tf.math.equal(tf.math.mod(tf.summary.experimental.get_step(), args.i_print), 0)):
+                tf.summary.scalar('loss', loss)
+                tf.summary.scalar('psnr', psnr)
+                # tf.summary.scalar('w_silden_loss', w_alpha_loss) # uncomment if using Silhouette Density Loss
+                tf.summary.scalar('w_binary_loss', w_binary_loss)
+                tf.summary.histogram('tran', trans)
                 if args.N_importance > 0:
-                    tf.contrib.summary.scalar('psnr0', psnr0)
+                    tf.summary.scalar('psnr0', psnr0)
 
             if i % args.i_img == 0:
 
@@ -1302,24 +1307,24 @@ def train():
                     os.makedirs(testimgdir, exist_ok=True)
                 imageio.imwrite(os.path.join(testimgdir, '{:06d}.png'.format(i)), to8b(rgb))
 
-                with tf.contrib.summary.record_summaries_every_n_global_steps(args.i_img):
+                with tf.summary.record_summaries_every_n_global_steps(args.i_img):
 
-                    tf.contrib.summary.image('rgb', to8b(rgb)[tf.newaxis])
-                    tf.contrib.summary.image(
+                    tf.summary.image('rgb', to8b(rgb)[tf.newaxis])
+                    tf.summary.image(
                         'disp', disp[tf.newaxis, ..., tf.newaxis])
-                    tf.contrib.summary.image(
+                    tf.summary.image(
                         'acc', acc[tf.newaxis, ..., tf.newaxis])
 
-                    tf.contrib.summary.scalar('psnr_holdout', psnr)
-                    tf.contrib.summary.image('rgb_holdout', target[tf.newaxis])
+                    tf.summary.scalar('psnr_holdout', psnr)
+                    tf.summary.image('rgb_holdout', target[tf.newaxis])
 
                 if args.N_importance > 0:
-                    with tf.contrib.summary.record_summaries_every_n_global_steps(args.i_img):
-                        tf.contrib.summary.image(
+                    with tf.summary.record_summaries_every_n_global_steps(args.i_img):
+                        tf.summary.image(
                             'rgb0', to8b(extras['rgb0'])[tf.newaxis])
-                        tf.contrib.summary.image(
+                        tf.summary.image(
                             'disp0', extras['disp0'][tf.newaxis, ..., tf.newaxis])
-                        tf.contrib.summary.image(
+                        tf.summary.image(
                             'z_std', extras['z_std'][tf.newaxis, ..., tf.newaxis])
 
         global_step.assign_add(1)
